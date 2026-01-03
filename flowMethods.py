@@ -409,17 +409,38 @@ def gt_textured_translation(shape, dx=10, dy=0):
     v_gt = np.full((h, w), dy, dtype=np.float32)
     return u_gt, v_gt
 
-# def synthetic_expansion(size=(200, 200), r1=20, r2=30):
-#     h, w = size
-#     img1 = np.zeros((h, w), np.uint8)
-#     img2 = np.zeros((h, w), np.uint8)
+def synthetic_expansion(size=(200, 200), r1=20, r2=30):
+    h, w = size
+    img1 = np.zeros((h, w), np.uint8)
+    img2 = np.zeros((h, w), np.uint8)
 
-#     cv2.circle(img1, (w//2, h//2), r1, 255, -1)
-#     cv2.circle(img2, (w//2, h//2), r2, 255, -1)
+    cv2.circle(img1, (w//2, h//2), r1, 255, -1)
+    cv2.circle(img2, (w//2, h//2), r2, 255, -1)
 
-#     return img1, img2
+    return img1, img2
 
-def synthetic_expansion(size=(200,200), scale=1.05):
+def gt_expansion(shape, r1=20, r2=30):
+    h, w = shape
+    cy, cx = h // 2, w // 2
+
+    Y, X = np.mgrid[0:h, 0:w]
+    dx = X - cx
+    dy = Y - cy
+    r = np.sqrt(dx**2 + dy**2)
+
+    u_gt = np.zeros((h, w), dtype=np.float32)
+    v_gt = np.zeros((h, w), dtype=np.float32)
+
+    scale = r2 / r1
+
+    mask = r <= r1  # only the original circle moves
+
+    u_gt[mask] = (scale - 1) * dx[mask]
+    v_gt[mask] = (scale - 1) * dy[mask]
+
+    return u_gt, v_gt
+
+def synthetic_textured_expansion(size=(200,200), scale=1.05):
     img1 = np.random.randint(0, 255, size, dtype=np.uint8)
     h, w = size
 
@@ -428,7 +449,7 @@ def synthetic_expansion(size=(200,200), scale=1.05):
 
     return img1, img2
 
-def gt_expansion(shape, alpha=0.02):
+def gt_textured_expansion(shape, alpha=0.02):
     h, w = shape
     cy, cx = h // 2, w // 2
 
@@ -438,18 +459,43 @@ def gt_expansion(shape, alpha=0.02):
 
     return u_gt.astype(np.float32), v_gt.astype(np.float32)
 
-# def synthetic_rotation(size=(200, 200), angle=10):
-#     img1 = np.zeros(size, np.uint8)
+def synthetic_rotation(size=(200, 200), angle=10):
+    img1 = np.zeros(size, np.uint8)
 
-#     # Draw vertical line
-#     cv2.line(img1, (100, 50), (100, 150), 255, 4)
+    # Draw vertical line
+    cv2.line(img1, (100, 50), (100, 150), 255, 4)
 
-#     # Rotation matrix
-#     M = cv2.getRotationMatrix2D((100, 100), angle, 1.0)
-#     img2 = cv2.warpAffine(img1, M, size[::-1])
+    # Rotation matrix
+    M = cv2.getRotationMatrix2D((100, 100), angle, 1.0)
+    img2 = cv2.warpAffine(img1, M, size[::-1])
+    
+    return img1, img2
 
-#     return img1, img2
-def synthetic_rotation(size=(200,200), angle_deg=5):
+def gt_rotation(shape, angle_deg=10, center=(100, 100)):
+    h, w = shape
+    cx, cy = center
+
+    theta = np.deg2rad(angle_deg)
+    cos_t = np.cos(theta)
+    sin_t = np.sin(theta)
+
+    Y, X = np.mgrid[0:h, 0:w]
+
+    # Shift coordinates to center
+    Xc = X - cx
+    Yc = Y - cy
+
+    # Apply rotation
+    Xr = cos_t * Xc - sin_t * Yc + cx
+    Yr = sin_t * Xc + cos_t * Yc + cy
+
+    # Optical flow = displacement
+    u_gt = Xr - X
+    v_gt = Yr - Y
+
+    return u_gt.astype(np.float32), v_gt.astype(np.float32)
+
+def synthetic_textured_rotation(size=(200,200), angle_deg=5):
     img1 = np.random.randint(0, 255, size, dtype=np.uint8)
     h, w = size
 
@@ -458,7 +504,7 @@ def synthetic_rotation(size=(200,200), angle_deg=5):
 
     return img1, img2
 
-def gt_rotation(shape, omega=0.02):
+def gt_textured_rotation(shape, omega=0.02):
     h, w = shape
     cy, cx = h // 2, w // 2
 
@@ -576,6 +622,11 @@ def main():
                 continue
 
             u, v = flow[:, :, 0], flow[:, :, 1]
+
+            binary_map = flow_to_binary(flow)
+            #scale the 1 value so it becomes 255 (white)
+            cv2.imshow("Binary Flow Visualization", binary_map * 255)
+            
             #visualize_quiver(u, v, title=quiver_title)
             visualize_quiver(u, v, img=img1, title=quiver_title)
             porcupine_plot(u, v, step=10, scale=3.0)
@@ -586,9 +637,7 @@ def main():
             flow_error_map(u_gt, v_gt, u, v)
             # Metric
             print("Mean EPE:", endpoint_error(u_gt, v_gt, u, v))
-            binary_map = flow_to_binary(flow)
-            #scale the 1 value so it becomes 255 (white)
-            cv2.imshow("Binary Flow Visualization", binary_map * 255)
+            
 
 
 #quiveer plot
