@@ -389,7 +389,7 @@ def synthetic_translation(size=(200, 200), shift=(10, 0)):
 
     return img1, img2
 
-def ground_truth_translation(shape, dx, dy):
+def gt_translation(shape, dx=10, dy=0):
     """
     Create ground-truth flow for a known translation.
     """
@@ -398,19 +398,33 @@ def ground_truth_translation(shape, dx, dy):
     v_gt = np.full((h, w), dy, dtype=np.float32)
     return u_gt, v_gt
 
-def synthetic_textured_translation():
-    img1 = np.random.randint(0, 255, (200,200), dtype=np.uint8)
-    img2 = np.roll(img1, shift=5, axis=1)  # shift right
-
+def synthetic_textured_translation(dx=10, dy=0, size=(200,200)):
+    img1 = np.random.randint(0, 255, size, dtype=np.uint8)
+    img2 = np.roll(img1, shift=(dy, dx), axis=(0,1))
     return img1, img2
 
-def synthetic_expansion(size=(200, 200), r1=20, r2=30):
-    h, w = size
-    img1 = np.zeros((h, w), np.uint8)
-    img2 = np.zeros((h, w), np.uint8)
+def gt_textured_translation(shape, dx=10, dy=0):
+    h, w = shape
+    u_gt = np.full((h, w), dx, dtype=np.float32)
+    v_gt = np.full((h, w), dy, dtype=np.float32)
+    return u_gt, v_gt
 
-    cv2.circle(img1, (w//2, h//2), r1, 255, -1)
-    cv2.circle(img2, (w//2, h//2), r2, 255, -1)
+# def synthetic_expansion(size=(200, 200), r1=20, r2=30):
+#     h, w = size
+#     img1 = np.zeros((h, w), np.uint8)
+#     img2 = np.zeros((h, w), np.uint8)
+
+#     cv2.circle(img1, (w//2, h//2), r1, 255, -1)
+#     cv2.circle(img2, (w//2, h//2), r2, 255, -1)
+
+#     return img1, img2
+
+def synthetic_expansion(size=(200,200), scale=1.05):
+    img1 = np.random.randint(0, 255, size, dtype=np.uint8)
+    h, w = size
+
+    M = cv2.getRotationMatrix2D((w//2, h//2), 0, scale)
+    img2 = cv2.warpAffine(img1, M, (w, h))
 
     return img1, img2
 
@@ -424,18 +438,47 @@ def gt_expansion(shape, alpha=0.02):
 
     return u_gt.astype(np.float32), v_gt.astype(np.float32)
 
-def synthetic_rotation(size=(200, 200), angle=10):
-    img1 = np.zeros(size, np.uint8)
+# def synthetic_rotation(size=(200, 200), angle=10):
+#     img1 = np.zeros(size, np.uint8)
 
-    # Draw vertical line
-    cv2.line(img1, (100, 50), (100, 150), 255, 4)
+#     # Draw vertical line
+#     cv2.line(img1, (100, 50), (100, 150), 255, 4)
 
-    # Rotation matrix
-    M = cv2.getRotationMatrix2D((100, 100), angle, 1.0)
-    img2 = cv2.warpAffine(img1, M, size[::-1])
+#     # Rotation matrix
+#     M = cv2.getRotationMatrix2D((100, 100), angle, 1.0)
+#     img2 = cv2.warpAffine(img1, M, size[::-1])
+
+#     return img1, img2
+def synthetic_rotation(size=(200,200), angle_deg=5):
+    img1 = np.random.randint(0, 255, size, dtype=np.uint8)
+    h, w = size
+
+    M = cv2.getRotationMatrix2D((w//2, h//2), angle_deg, 1.0)
+    img2 = cv2.warpAffine(img1, M, (w, h))
 
     return img1, img2
 
+def gt_rotation(shape, omega=0.02):
+    h, w = shape
+    cy, cx = h // 2, w // 2
+
+    Y, X = np.mgrid[0:h, 0:w]
+
+    u_gt = -omega * (Y - cy)
+    v_gt =  omega * (X - cx)
+
+    return u_gt.astype(np.float32), v_gt.astype(np.float32)
+
+def get_ground_truth(motion_type, img_shape):
+    if motion_type == 1:
+        return gt_translation(img_shape)
+    elif motion_type == 2:
+        return gt_textured_translation(img_shape)
+    elif motion_type == 3:
+        return gt_expansion(img_shape)
+    elif motion_type == 4:
+        return gt_rotation(img_shape)
+            
 def choose_synthetic_images():
     while True:
         print("\nSelect a synthetic test case:")
@@ -448,15 +491,15 @@ def choose_synthetic_images():
         choice = input("Enter choice: ").strip().lower()
 
         if choice == "1":
-            return synthetic_translation()
+            return *synthetic_translation(), 1
         elif choice == "2":
-            return synthetic_textured_translation()
+            return *synthetic_textured_translation(), 2
         elif choice == "3":
-            return synthetic_expansion()
+            return *synthetic_expansion(), 3
         elif choice == "4":
-            return synthetic_rotation()
+            return *synthetic_rotation(), 4
         elif choice == "q":
-            return None, None
+            return None, None, "q"
 
         print("Invalid choice. Try again.")
 
@@ -484,11 +527,12 @@ def main():
     while True:
 
         # --- Choose synthetic image pair ---
-        img1, img2 = choose_synthetic_images()
+        img1, img2, choice = choose_synthetic_images()
         if img1 is None:
             print("Exiting program...")
             break
-        u_gt, v_gt = ground_truth_translation(img1.shape, dx=10, dy=0)
+       #u_gt, v_gt = gt_translation(img1.shape, dx=10, dy=0)
+        u_gt, v_gt = get_ground_truth(choice, img1.shape)
 
         # Show both images
         show_synthetic_images(img1, img2)
@@ -504,7 +548,7 @@ def main():
             quiver_title = ""
 
             if choice == 'q':
-                print("Exiting program.")
+                print("Returning to shape selection.")
                 break
 
             if choice == '1':
